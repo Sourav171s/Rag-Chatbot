@@ -1,0 +1,90 @@
+services:
+  # PostgreSQL database with pgvector extension
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: rag-chatbot-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: rag_chatbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rag-network
+
+  # Backend API service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: rag-chatbot-backend
+    # Only the backend reads .env.docker (GEMINI_API_KEY, GEMINI_CHAT_MODEL,
+    # GEMINI_EMBEDDING_MODEL, EMBEDDING_DIMENSION and the optional GEMINI_* settings).
+    # Values listed under `environment:` would override it, so the Gemini settings
+    # are not repeated there.
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3001}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: rag_chatbot
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.2}
+      MAX_SOURCES: ${MAX_SOURCES:-5}
+      # Set to 'true' to automatically seed database with markdown docs on startup.
+      # Seeding is idempotent: only files not yet embedded are sent to Gemini
+      # (one batch request), so restarts make no extra embedding calls.
+      RUN_SEED: ${RUN_SEED:-true}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Healthy once start.sh has run migrations + seeding and the API is listening
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # Frontend UI service
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3001
+    container_name: rag-chatbot-frontend
+    # No env_file here: the frontend never receives GEMINI_API_KEY
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  rag-network:
+    driver: bridge

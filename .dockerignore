@@ -1,0 +1,8 @@
+# Keep the Docker build context small and free of secrets.
+# The Dockerfiles install dependencies and build from source themselves.
+**/node_modules
+**/dist
+.env
+.env.*
+**/.env
+.git

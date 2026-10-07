@@ -1,0 +1,88 @@
+projects:
+  - name: rag-chatbot-example
+    environments:
+      - name: production
+        services:
+          # Backend API service
+          - type: web
+            name: rag-chatbot-backend
+            runtime: docker
+            region: oregon
+            plan: starter
+            dockerfilePath: ./backend/Dockerfile
+            dockerContext: ./
+            healthCheckPath: /api/health
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: PORT
+                value: 3001
+              - key: CORS_ORIGIN
+                fromService:
+                  type: web
+                  name: rag-chatbot-frontend
+                  envVarKey: RENDER_EXTERNAL_URL
+              - key: DB_HOST
+                fromDatabase:
+                  name: rag-chatbot-db
+                  property: host
+              - key: DB_PORT
+                fromDatabase:
+                  name: rag-chatbot-db
+                  property: port
+              - key: DB_NAME
+                fromDatabase:
+                  name: rag-chatbot-db
+                  property: database
+              - key: DB_USER
+                fromDatabase:
+                  name: rag-chatbot-db
+                  property: user
+              - key: DB_PASSWORD
+                fromDatabase:
+                  name: rag-chatbot-db
+                  property: password
+              - key: DB_POOL_MAX
+                value: 20
+              - key: GEMINI_API_KEY
+                sync: false
+              - key: GEMINI_EMBEDDING_MODEL
+                value: gemini-embedding-2
+              - key: GEMINI_CHAT_MODEL
+                value: gemini-3.8-flash
+              - key: GEMINI_MAX_TOKENS
+                value: 2048
+              - key: GEMINI_MAX_RETRIES
+                value: 2
+              - key: EMBEDDING_DIMENSION
+                value: 1536
+              - key: SIMILARITY_THRESHOLD
+                value: 0.1
+              - key: MAX_SOURCES
+                value: 5
+              - key: RUN_SEED
+                value: true
+
+          # Frontend UI service
+          - type: web
+            name: rag-chatbot-frontend
+            runtime: docker
+            region: oregon
+            plan: starter
+            dockerfilePath: ./frontend/Dockerfile
+            dockerContext: ./
+            envVars:
+              - key: VITE_API_URL
+                fromService:
+                  type: web
+                  name: rag-chatbot-backend
+                  envVarKey: RENDER_EXTERNAL_URL
+
+        databases:
+          - name: rag-chatbot-db
+            databaseName: rag_chatbot
+            user: chat_bot
+            plan: free
+            region: oregon
+            postgresMajorVersion: "16"
+            ipAllowList: []
